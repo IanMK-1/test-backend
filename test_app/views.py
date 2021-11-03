@@ -1,17 +1,30 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser, AllowAny
+from rest_framework.permissions import AllowAny
 from .serializers import GroupSerializer, RegistrationSerializer, ObtainTokenSerializer, PermissionSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth.models import User, Group, Permission
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import PermissionDenied
+
+
+def getPermission(request, groups):
+    if not request.user.is_authenticated:
+        raise PermissionDenied
+    else:
+        user_groups = []
+        for group in request.user.groups.values_list('name', flat=True):
+            user_groups.append(group)
+        if len(set(user_groups).intersection(groups)) <= 0:
+            raise PermissionDenied
+    return True
 
 
 class CreateGroupView(generics.CreateAPIView):
-    permission_classes = (IsAdminUser, )
-
     def post(self, request):
+        getPermission(request, ['admin'])
+
         serializer = GroupSerializer(data=request.data)
 
         if serializer.is_valid():
@@ -23,9 +36,9 @@ class CreateGroupView(generics.CreateAPIView):
 
 
 class RegistrationView(generics.CreateAPIView):
-    permission_classes = (IsAdminUser, )
-
     def post(self, request):
+        getPermission(request, ['admin'])
+
         serializer = RegistrationSerializer(data=request.data)
 
         if serializer.is_valid():
@@ -41,15 +54,22 @@ class LoginView(TokenObtainPairView):
 
 
 class GroupList(generics.ListAPIView):
-    permission_classes = (IsAdminUser,)
-    queryset = Group.objects.all()
-    serializer_class = GroupSerializer
+    def get(self, request):
+        getPermission(request, ['admin'])
+
+        queryset = Group.objects.all()
+        serializer = GroupSerializer(queryset, many=True)
+
+        if serializer.is_valid:
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AddPermission(generics.CreateAPIView):
-    permission_classes = (IsAdminUser, )
-
     def post(self, request):
+        getPermission(request, ['admin'])
+
         permission_name = request.data.get('permission_name')
         code_name = request.data.get('code_name')
         group_name = request.data.get('group_name')
